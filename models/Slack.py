@@ -52,27 +52,51 @@ class Slack:
         self.Slack_Ir_node = Buses._node_index.__next__()
         self.Slack_Ii_node = Buses._node_index.__next__()
 
-    def assign_dual_nodes(self,):
+    def assign_dual_nodes(self, bus):
         # You need to implement this
+        # Guan: Each slack current needs one lambda  
+        self.Slack_lambda_Ir_node = Buses._node_index.__next__()
+        self.Slack_lambda_Ii_node = Buses._node_index.__next__()
+        self.lambda_Vr = bus[Buses.bus_key_[self.Bus]].lambda_Vr
+        self.lambda_Vi = bus[Buses.bus_key_[self.Bus]].lambda_Vi
+
         pass
 
     def stamp(self, V, Y_val, Y_row, Y_col, J_val, J_row, idx_Y, idx_J):
         # slack currents leaving their nodes
         idx_Y = stampY(self.Vr_node, self.Slack_Ir_node, 1, Y_val, Y_row, Y_col, idx_Y)
+        #print (self.Vr_node, self.Slack_Ir_node)
         idx_Y = stampY(self.Vi_node, self.Slack_Ii_node, 1, Y_val, Y_row, Y_col, idx_Y)
-
+        #print (self.Vi_node, self.Slack_Ii_node)
         # enforce slack constraints
         idx_Y = stampY(self.Slack_Ir_node, self.Vr_node, 1, Y_val, Y_row, Y_col, idx_Y)
+        #print (self.Slack_Ir_node, self.Vr_node)
         idx_J = stampJ(self.Slack_Ir_node, self.Vr_set, J_val, J_row, idx_J)
-
+        
         idx_Y = stampY(self.Slack_Ii_node, self.Vi_node, 1, Y_val, Y_row, Y_col, idx_Y)
         idx_J = stampJ(self.Slack_Ii_node, self.Vi_set, J_val, J_row, idx_J)
 
+
         return (idx_Y, idx_J)
 
-    def stamp_dual(self):
+    def stamp_dual(self, V, Ydulin_val, Ydulin_row, Ydulin_col, Jdulin_val, Jdulin_row, idx_Y, idx_Jlf):
         # You need to implement this.
-        pass
+
+        idx_Y = stampY(self.lambda_Vr, self.Slack_lambda_Ir_node, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vi, self.Slack_lambda_Ii_node, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        
+        #for slack lambda Ir Ii rows are to be non-zero
+        idx_Y = stampY(self.Slack_lambda_Ir_node, self.lambda_Vr, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        idx_Y = stampY(self.Slack_lambda_Ii_node, self.lambda_Vi, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        idx_Jlf = stampJ(self.Slack_lambda_Ir_node, 0, Jdulin_val, Jdulin_row, idx_Jlf)
+        idx_Jlf = stampJ(self.Slack_lambda_Ii_node, 0, Jdulin_val, Jdulin_row, idx_Jlf)
+
+        #idx_Y = stampY(self.Slack_lambda_Ir_node, self.Vr_node, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        #idx_Y = stampY(self.Slack_lambda_Ii_node, self.Vi_node, 1, Ydulin_val, Ydulin_row, Ydulin_col, idx_Y)
+        #idx_Jlf = stampJ(self.Slack_lambda_Ir_node, self.Vr_set, Jdulin_val, Jdulin_row, idx_Jlf)
+        #idx_Jlf = stampJ(self.Slack_lambda_Ii_node, self.Vi_set, Jdulin_val, Jdulin_row, idx_Jlf)
+
+        return(idx_Y, idx_Jlf)
 
     def calc_slack_PQ(self, V_sol):
         Ir = V_sol[self.Slack_Ir_node]

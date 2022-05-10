@@ -7,7 +7,7 @@ casename = 'testcases/GS-4_stressed.RAW'
 settings = {
     "Tolerance": 1E-07,
     "Max Iters": 1000,
-    "Limiting":  False
+    "Limiting":  False  #Guan-Ying: Voltage limiting needs to be turned on to solve the 14_stressed2_fixed case. 
 }
 
 # run the solver

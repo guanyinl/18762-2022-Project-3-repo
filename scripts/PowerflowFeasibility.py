@@ -40,13 +40,17 @@ class PowerFlowFeasibility:
         v_sol[v_inds] = np.minimum(v_sol[v_inds], vmax)
         v_sol[v_inds] = np.maximum(v_sol[v_inds], vmin)
 
+        #print (v_inds)
+        return(v_sol)
+
     def check_error(self, v, v_sol):
         return np.amax(np.abs(v - v_sol))
 
-    def stamp_linear(self, branch, transformer, shunt, slack, v_init):
-        size_Y = v_init.shape[0]
+    def stamp_linear(self, branch, transformer, shunt, slack, v_init, feasibility_sources):
+        size_Y = v_init.shape[0] #return the size of v_init
+        #print('size_Y =', size_Y)
         nnz = 100*size_Y
-        Ylin_row = np.zeros(nnz, dtype=int)
+        Ylin_row = np.zeros(nnz, dtype=int) 
         Ylin_col = np.zeros(nnz, dtype=int)
         Ylin_val = np.zeros(nnz, dtype=np.double)
         Jlin_row = np.zeros(4*size_Y, dtype=int)
@@ -57,24 +61,57 @@ class PowerFlowFeasibility:
 
         for ele in branch:
             (idx_Y, idx_J) = ele.stamp(v_init, Ylin_val, Ylin_row, Ylin_col, Jlin_val, Jlin_row, idx_Y, idx_J)
-        for ele in transformer:
+        for ele in transformer: #no transformer for 4-bus
             (idx_Y, idx_J) = ele.stamp(v_init, Ylin_val, Ylin_row, Ylin_col, Jlin_val, Jlin_row, idx_Y, idx_J)
-        for ele in shunt:
+        for ele in shunt:#no shunt for 4-bus  
             (idx_Y, idx_J) = ele.stamp(v_init, Ylin_val, Ylin_row, Ylin_col, Jlin_val, Jlin_row, idx_Y, idx_J)
         for ele in slack:
             (idx_Y, idx_J) = ele.stamp(v_init, Ylin_val, Ylin_row, Ylin_col, Jlin_val, Jlin_row, idx_Y, idx_J)
-        
-        nnz_indices = np.nonzero(Ylin_val)[0]
+        for ele in feasibility_sources:
+            (idx_Y, idx_J) = ele.stamp(v_init, Ylin_val, Ylin_row, Ylin_col, Jlin_val, Jlin_row, idx_Y, idx_J)
+
+        #print ('idx_Y =', idx_Y)
+        #print ('idx_J =', idx_J)
+        nnz_indices = np.nonzero(Ylin_val)[0]#return indexes that are not zero. 
         Ylin = csc_matrix((Ylin_val[nnz_indices], (Ylin_row[nnz_indices], Ylin_col[nnz_indices])), shape=(size_Y, size_Y), dtype=np.float64)
-        nnz_indices = np.nonzero(Jlin_val)[0]
+        nnz_indices = np.nonzero(Jlin_val)[0]#!!!!!!!!!!!!!!!!why[0]?  
+        #print (Jlin_row[0], Jlin_val[0])
+        #print(nnz_indices)
         Jlin_col = np.zeros(Jlin_row.shape, dtype=np.int)
         Jlin = csc_matrix((Jlin_val, (Jlin_row, Jlin_col)), shape=(size_Y, 1), dtype=np.float64)
         return (Ylin, Jlin)
 
-    def stamp_linear_dual(self,):
+    def stamp_linear_dual(self,slack, branch, feasibility_sources, v_init, bus):
         # Generate the dual stamps for all your linear devices.
         # You should decide the necessary arguments.
-        pass 
+
+        size_Y = v_init.shape[0] #return the size of v_init
+        #print('size_Y =', size_Y)
+        nnz = 100*size_Y
+        Ydulin_row = np.zeros(nnz, dtype=int) 
+        Ydulin_col = np.zeros(nnz, dtype=int)
+        Ydulin_val = np.zeros(nnz, dtype=np.double)
+        Jdulin_row = np.zeros(4*size_Y, dtype=int)
+        Jdulin_val = np.zeros(4*size_Y, dtype=np.double)
+        
+        idx_Y = 0
+        idx_J = 0
+
+        for ele in branch:
+            (idx_Y, idx_J) = ele.stamp_dual(v_init, Ydulin_val, Ydulin_row, Ydulin_col, Jdulin_val, Jdulin_row, idx_Y, idx_J)
+        for ele in feasibility_sources:
+            (idx_Y, idx_J) = ele.stamp_dual(v_init, Ydulin_val, Ydulin_row, Ydulin_col, Jdulin_val, Jdulin_row, idx_Y, idx_J)
+        for ele in slack:
+            (idx_Y, idx_J) = ele.stamp_dual(v_init, Ydulin_val, Ydulin_row, Ydulin_col, Jdulin_val, Jdulin_row, idx_Y, idx_J)
+
+        nnz_indices = np.nonzero(Ydulin_val)[0]#return indexes that are not zero. 
+        Ydulin = csc_matrix((Ydulin_val[nnz_indices], (Ydulin_row[nnz_indices], Ydulin_col[nnz_indices])), shape=(size_Y, size_Y), dtype=np.float64)
+        #print ('Ydulin =', Ydulin)
+        nnz_indices = np.nonzero(Jdulin_val)[0]
+        Jdulin_col = np.zeros(Jdulin_row.shape, dtype=np.int)
+        Jdulin = csc_matrix((Jdulin_val, (Jdulin_row, Jdulin_col)), shape=(size_Y, 1), dtype=np.float64)
+        #print ('Jdulin =', Jdulin)
+        return (Ydulin, Jdulin) 
 
     def stamp_nonlinear(self, generator, load, v_init):
         size_Y = v_init.shape[0]
@@ -100,10 +137,33 @@ class PowerFlowFeasibility:
         Jnlin = csc_matrix((Jnlin_val, (Jnlin_row, Jlin_col)), shape=(size_Y, 1), dtype=np.float64)
         return (Ynlin, Jnlin)
 
-    def stamp_nonlinear_dual(self,):
+    def stamp_nonlinear_dual(self, generator, load, v_init):
         # Generate the dual stamps for all your nonlinear devices.
         # You should decide the necessary arguments.
-        pass 
+        size_Y = v_init.shape[0]
+        nnz = 100*size_Y
+        Ydunlin_row = np.zeros(nnz, dtype=int)
+        Ydunlin_col = np.zeros(nnz, dtype=int)
+        Ydunlin_val = np.zeros(nnz, dtype=np.double)
+        Jdunlin_row = np.zeros(4*size_Y, dtype=int)
+        Jdunlin_val = np.zeros(4*size_Y, dtype=np.double)
+        
+        idx_Y = 0
+        idx_J = 0
+
+        for ele in load:
+            (idx_Y, idx_J) = ele.stamp_dual(v_init, Ydunlin_val, Ydunlin_row, Ydunlin_col, Jdunlin_val, Jdunlin_row, idx_Y, idx_J)
+        for ele in generator:
+            (idx_Y, idx_J) = ele.stamp_dual(v_init, Ydunlin_val, Ydunlin_row, Ydunlin_col, Jdunlin_val, Jdunlin_row, idx_Y, idx_J)
+
+
+        nnz_indices = np.nonzero(Ydunlin_val)[0]
+        Ydunlin = csc_matrix((Ydunlin_val[nnz_indices], (Ydunlin_row[nnz_indices], Ydunlin_col[nnz_indices])), shape=(size_Y, size_Y), dtype=np.float64)
+        nnz_indices = np.nonzero(Jdunlin_val)[0]
+        Jdunlin_col = np.zeros(Jdunlin_row.shape, dtype=np.int)
+        Jdunlin = csc_matrix((Jdunlin_val, (Jdunlin_row, Jdunlin_col)), shape=(size_Y, 1), dtype=np.float64)
+
+        return(Ydunlin, Jdunlin) 
 
     def calc_resid_primal(self, v, generator, load, slack, branch, transformer, shunt):
         # This calculates the residuals of your constraint equations.
@@ -139,7 +199,8 @@ class PowerFlowFeasibility:
                           branch,
                           shunt,
                           load,
-                          feasibility_sources):
+                          feasibility_sources,
+                          size_Y):
         """Runs a feasibility analysis of the positive sequence power flow problem on this network
            using the Equivalent Circuit Formulation. Minimize the L2-norm of slack injections
            Required to satisfy KCL at each node in the split-circuit network.
@@ -185,13 +246,21 @@ class PowerFlowFeasibility:
             max_vstep = np.inf
 
         # # # Stamp Linear Power Grid Elements into Y matrix # # #
-        Ylin, Jlin = self.stamp_linear(branch, transformer, shunt, slack, v_init)
+        Ylin, Jlin = self.stamp_linear(branch, transformer, shunt, slack, v_init, feasibility_sources)
+        Ylin_dense=Ylin.todense()
+        Jlin_dense=Jlin.todense()
+        #print ('Y_matrix =', Ylin)
+        #print ('J_matrix =', Jlin)
 
         # TODO: PART 1, STEP 2.1 - Complete the stamp_linear_dual function which create the dual stamps
         #  associated with all of the linear elements of the network.
         #  This function should call the stamp_dual function of each linear element and return a Y matrix of dual stamps.
         #  You need to decide the input arguments and return values.
-        self.stamp_linear_dual()
+        (Ydulin, Jdulin) = self.stamp_linear_dual(slack, branch, feasibility_sources, v_init, bus)
+        Ydulin_dense=Ydulin.todense()
+        Jdulin_dense=Jdulin.todense()
+        #print ('Y_dual_lin_matrix =', Ydulin_dense)
+        #print ('J_dual_lin_matrix =', Jdulin_dense)
 
         # # # Initialize While Loop (NR) Variables # # #
         # Feel free to change these if you'd like
@@ -211,14 +280,23 @@ class PowerFlowFeasibility:
             # TODO: PART 1, STEP 2.3 - Complete the stamp_nonlinear_dual function which creates the dual stamps for
             #  the nonlinear elements. This function should call a stamp_dual function of each nonlinear element and return
             #  an updated Y matrix. You need to decide the input arguments and return values.
-            self.stamp_linear_dual()
+            (Ydunlin, Jdunlin) = self.stamp_nonlinear_dual(generator, load, v)
+            #print('Ydunlin =', Ydunlin)
+            #print('Jdunlin =', Jdunlin)
 
             # # # Solve The System # # #
             # TODO: PART 1, STEP 2.4 - Complete the solve function which solves system of equations Yv = J. The
             #  function should return a new v_sol.
             #  You need to decide the input arguments and return values.
-            Y = Ynlin + Ylin
-            J = Jnlin + Jlin
+            Y = Ynlin + Ylin + Ydulin + Ydunlin
+            J = Jnlin + Jlin + Jdulin + Jdunlin
+
+            J_dense = J.todense()
+            Y_dense = Y.todense()
+
+            #rint ('\n', 'J_dense =', J_dense)
+            #print ('Y_dense =', Y_dense)
+
             if check_for_zero_rows_cols:
                 zero_rows = []
                 zero_cols = []
@@ -230,6 +308,10 @@ class PowerFlowFeasibility:
                 print("Rows of all zeros: ", zero_rows)
                 print("Columns of all zeros: ", zero_rows)
             v_sol = self.solve(Y, J)
+
+            #print ('v_sol', v_sol)
+            #print ('v', v)
+
             NR_count += 1
             # # # Compute The Error at the current NR iteration # # #
             err_max = self.check_error(v, v_sol)
@@ -241,7 +323,8 @@ class PowerFlowFeasibility:
             # Feel free to change this function and its arguments as you wish
             # to account for the differences of feasibility analysis vs. powerflow
             if self.enable_limiting and err_max > tol:
-                self.apply_limiting(v, v_sol, v_inds, vmax, vmin, max_vstep)
+                v = self.apply_limiting(v, v_sol, v_inds, vmax, vmin, max_vstep)
+                #print (v)
             else:
                 v = np.copy(v_sol)
 

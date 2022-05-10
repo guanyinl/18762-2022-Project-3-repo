@@ -8,6 +8,7 @@ class Buses:
     _idsAllBuses = count(1)
 
     _node_index = count(0)
+    
     bus_key_ = {}
     all_bus_key_ = {}
 
@@ -41,6 +42,10 @@ class Buses:
 
         # initialize dual nodes
         # TODO - you can name them as you please
+        
+        self.lambda_Vr = None
+        self.lambda_Vi = None
+        self.lambda_Q = None
 
         # initialize the bus key
         self.idAllBuses = self._idsAllBuses.__next__()
@@ -59,10 +64,11 @@ class Buses:
         Returns:
             None
         """
-        # If Slack or PQ Bus
+        # If Slack (3) or PQ Bus (1)  
         if self.Type == 1 or self.Type == 3:
             self.node_Vr = self._node_index.__next__()
             self.node_Vi = self._node_index.__next__()
+            #print('node_Vi ', self.node_Vi)
 
         # If PV Bus
         elif self.Type == 2:
@@ -79,7 +85,19 @@ class Buses:
         # TODO
         # You need to do this
         # Remember, every equality constraint in your system needs a lambda variable.
-        pass
+
+        # If Slack or PQ Bus
+        if self.Type == 1 or self.Type == 3:
+            self.lambda_Vr = self._node_index.__next__()
+            self.lambda_Vi = self._node_index.__next__()
+        
+        # If PV Bus
+        elif self.Type == 2:
+            self.lambda_Vr = self._node_index.__next__()
+            self.lambda_Vi = self._node_index.__next__()
+            self.lambda_Q = self._node_index.__next__()
+
+    
 
     def calc_Vphasor(self, V_sol):
         Vr = V_sol[self.node_Vr]

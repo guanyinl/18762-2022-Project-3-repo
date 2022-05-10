@@ -49,10 +49,17 @@ class Loads:
         self.ZQ = ZQ/global_vars.base_MVA
     
     def assign_indexes(self, bus):
-        # Nodes shared by generators on the same bus
-        self.Vr_node = bus[Buses.bus_key_[self.Bus]].node_Vr
-        self.Vi_node = bus[Buses.bus_key_[self.Bus]].node_Vi
-        # check something about gen_type??
+        for ele in bus:
+            if ele.Type == 1:
+                # Nodes shared by generators on the same bus
+                self.Vr_node = bus[Buses.bus_key_[self.Bus]].node_Vr
+                self.Vi_node = bus[Buses.bus_key_[self.Bus]].node_Vi
+                # check something about gen_type??
+
+                #lambda shared by loads on the same bus
+                self.lambda_Vr = bus[Buses.bus_key_[self.Bus]].lambda_Vr
+                self.lambda_Vi = bus[Buses.bus_key_[self.Bus]].lambda_Vi
+
     
     def stamp(self, V, Y_val, Y_row, Y_col, J_val, J_row, idx_Y, idx_J):
         Vr = V[self.Vr_node]
@@ -78,9 +85,81 @@ class Loads:
 
         return (idx_Y, idx_J)
 
-    def stamp_dual(self):
+    def stamp_dual(self, V, Ydunlin_val, Ydunlin_row, Ydunlin_col, Jdunlin_val, Jdunlin_row, idx_Y, idx_J):
         # You need to implement this.
-        pass
+        Vr = V[self.Vr_node]
+        Vi = V[self.Vi_node]
+        Lbda_r = V[self.lambda_Vr]
+        Lbda_i = V[self.lambda_Vi]
+        #print ('Bus =',self.Bus,'Lbda_r =', Lbda_r, 'V_index =', self.lambda_Vr)
+        #print ('Bus =',self.Bus,'Lbda_i =', Lbda_i, 'V_index =', self.lambda_Vi)
+
+        #first derivatives for lagrangian
+        dIrldVr = (self.P*(Vi**2-Vr**2) - 2*self.Q*Vr*Vi)/(Vr**2+Vi**2)**2   #used
+        dIrldVi = (self.Q*(Vr**2-Vi**2) - 2*self.P*Vr*Vi)/(Vr**2+Vi**2)**2   #used
+        dIildVi = -dIrldVr   #used
+        dIildVr = dIrldVi    #used
+
+        #2nd derivatives for dVrl
+        dLrl_dLbda_rl = dIrldVr*(+1)
+        dLrl_dLada_il = dIildVr*(+1)
+        
+        dLrl_dVr_1 = Lbda_r*(self.P*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vr)-((self.P)*(Vr**2+Vi**2)**-2*2*(Vr)+(self.P*Vr+self.Q*Vi)*(-2)*(Vr**2+Vi**2)**(-3)*4*Vr**2+2*(self.P*Vr+self.Q*Vi)*(Vr**2+Vi**2)**(-2)))
+        dLrl_dVr_2 = Lbda_i*(self.Q*(Vr**2+Vi**2)**(-2)*2*(Vr)-(-self.Q*(Vr**2+Vi**2)**-2*2*(Vr)+(self.P*Vi-self.Q*Vr)*(-2)*(Vr**2+Vi**2)**(-3)*4*Vr**2+2*(self.P*Vi-self.Q*Vr)*(Vr**2+Vi**2)**(-2)))
+        dLrl_dVr = dLrl_dVr_1+dLrl_dVr_2
+        #print(dLrl_dVr)
+
+        dLrl_dVi_1 = Lbda_r*(self.P*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vi)-((self.Q)*(Vr**2+Vi**2)**-2*2*(Vr)+(self.P*Vr+self.Q*Vi)*(-2)*(Vr**2+Vi**2)**(-3)*2*Vr*2*Vi))
+        dLrl_dVi_2 = Lbda_i*(self.Q*(1)*(Vr**2+Vi**2)**(-2)*2*(Vi)-((self.P)*(Vr**2+Vi**2)**-2*2*(Vr)+(self.P*Vi-self.Q*Vr)*(-2)*(Vr**2+Vi**2)**(-3)*2*Vr*2*Vi))
+        dLrl_dVi = dLrl_dVi_1+dLrl_dVi_2
+        #print(dLrl_dVi)
+        
+        idx_Y = stampY(self.lambda_Vr, self.lambda_Vr, dLrl_dLbda_rl, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vr, self.lambda_Vi, dLrl_dLada_il, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vr, self.Vr_node, dLrl_dVr, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vr, self.Vi_node, dLrl_dVi, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        
+        Lrl_hist = Lbda_r*dIrldVr*(+1)+Lbda_i*dIildVr*(+1)
+        Lrl_J_stamp = -Lrl_hist+Lbda_r*dLrl_dLbda_rl+Lbda_i*dLrl_dLada_il+Vr*dLrl_dVr+Vi*dLrl_dVi
+
+        idx_J = stampJ(self.lambda_Vr, Lrl_J_stamp, Jdunlin_val, Jdunlin_row, idx_J)
+
+        #print ('load i,j =', self.lambda_Vr, self.lambda_Vr, 'dLrl_dLbda_rl', dLrl_dLbda_rl)
+        #print ('load i,j =', self.lambda_Vr, self.lambda_Vi, 'dLrl_dLada_il', dLrl_dLada_il)
+        #print ('load i,j =', self.lambda_Vr, self.Vr_node, 'dLrl_dVr', dLrl_dVr)
+        #print ('load i,j =', self.lambda_Vr, self.Vi_node, 'dLrl_dVi', dLrl_dVi)
+        #print ('J[i] =', self.lambda_Vr, Lrl_J_stamp)
+
+        #2nd derivatives for dVil
+        dLil_dLbda_rl = dIrldVi*(+1)
+        dLil_dLada_il = dIildVi*(+1)
+
+        dLil_dVr_1 = Lbda_r*(self.Q*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vr)-((self.P)*(Vr**2+Vi**2)**-2*2*(Vi)+(self.P*Vr+self.Q*Vi)*(-2)*(Vr**2+Vi**2)**(-3)*2*Vi*2*Vr))
+        dLil_dVr_2 = Lbda_i*(self.P*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vr)-((-self.Q)*(Vr**2+Vi**2)**-2*2*(Vi)+(self.P*Vi-self.Q*Vr)*(-2)*(Vr**2+Vi**2)**(-3)*2*Vi*2*Vr))
+        dLil_dVr = dLil_dVr_1+dLil_dVr_2
+        
+        dLil_dVi_1 = Lbda_r*(self.Q*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vi)-((self.Q)*(Vr**2+Vi**2)**-2*2*(Vi)+(self.P*Vr+self.Q*Vi)*(-2)*(Vr**2+Vi**2)**(-3)*4*Vi**2+2*(self.P*Vr+self.Q*Vi)*(Vr**2+Vi**2)**(-2)))
+        dLil_dVi_2 = Lbda_i*(self.P*(-1)*(Vr**2+Vi**2)**(-2)*2*(Vi)-((self.P)*(Vr**2+Vi**2)**-2*2*(Vi)+(self.P*Vi-self.Q*Vr)*(-2)*(Vr**2+Vi**2)**(-3)*4*Vi**2+2*(self.P*Vi-self.Q*Vr)*(Vr**2+Vi**2)**(-2)))
+        dLil_dVi = dLil_dVi_1+dLil_dVi_2
+
+        idx_Y = stampY(self.lambda_Vi, self.lambda_Vr, dLil_dLbda_rl , Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vi, self.lambda_Vi, dLil_dLada_il, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vi, self.Vr_node, dLil_dVr, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+        idx_Y = stampY(self.lambda_Vi, self.Vi_node, dLil_dVi, Ydunlin_val, Ydunlin_row, Ydunlin_col, idx_Y)
+
+        Lil_hist = Lbda_r*dIrldVi*(+1)+Lbda_i*dIildVi*(+1)
+        
+        Lil_J_stamp = -Lil_hist+Lbda_r*dLil_dLbda_rl+Lbda_i*dLil_dLada_il+Vr*dLil_dVr+Vi*dLil_dVi
+
+        idx_J = stampJ(self.lambda_Vi, Lil_J_stamp, Jdunlin_val, Jdunlin_row, idx_J)
+
+        #print ('load i,j =', self.lambda_Vi, self.lambda_Vr, 'dLil_dLbda_rl', dLil_dLbda_rl)
+        #print ('load i,j =', self.lambda_Vi, self.lambda_Vi, 'dLil_dLada_il', dLil_dLada_il)
+        #print ('load i,j =', self.lambda_Vi, self.Vr_node, 'dLil_dVr', dLil_dVr)
+        #print ('load i,j =', self.lambda_Vi, self.Vi_node, 'dLil_dVi', dLil_dVi)  
+        #print ('J[i] =', self.lambda_Vi, Lil_J_stamp)      
+
+        return (idx_Y, idx_J)
 
     def calc_residuals(self, resid, V):
         P = self.P

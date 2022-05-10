@@ -59,6 +59,10 @@ class Shunts:
         self.Vr_node = bus[Buses.bus_key_[self.Bus]].node_Vr
         self.Vi_node = bus[Buses.bus_key_[self.Bus]].node_Vi
 
+        #No Shunt for the 4 bus case
+        self.lambda_Vr = bus[Buses.bus_key_[self.Bus]].lambda_Vr
+        self.lambda_Vi = bus[Buses.bus_key_[self.Bus]].lambda_Vi
+
     def stamp(self, V, Y_val, Y_row, Y_col, J_val, J_row, idx_Y, idx_J):
         idx_Y = stampY(self.Vr_node, self.Vr_node,
                                     self.G_pu, Y_val, Y_row, Y_col, idx_Y)
